@@ -8,22 +8,24 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC 
 import json
-
 from sqlalchemy.engine.base import Engine
 # from webdriver_manager.chrome import ChromeDriverManager
 import boto3 
+import time 
 from tqdm import tqdm
 import shutil
 import uuid
-import re
+import zipfile
 import pandas as pd
 from sqlalchemy import create_engine
+import os
+
 
 ''' Defines a class to perform webscraping for the pinterest website. '''
 
 class PinterestScraper:
 
-    def __init__(self, root: str) -> None:
+    def __init__(self, root: str, category = None) -> None:
         
         ''' Initialise the attributes of the class
 
@@ -50,7 +52,6 @@ class PinterestScraper:
             ---------
             None '''
             
-        
         self._category = None # Holds the value whatever category we are currently on.
         self._root = root # The root URL.
         self._driver = webdriver.Chrome()
@@ -136,6 +137,8 @@ class PinterestScraper:
 
         except KeyboardInterrupt:
             raise KeyboardInterrupt
+        
+        return True
 
     def _categories_to_save_imgs(self, selected_category_names: list) -> None:
 
@@ -214,6 +217,7 @@ like to download images for.\nEnter your answer as a comma separated list: ').up
 
         except KeyboardInterrupt:
             raise KeyboardInterrupt
+        return True
 
 
     def _get_user_input(self, category_link_dict: dict) -> tuple: 
@@ -294,8 +298,8 @@ list. Values between 1 and {len(category_link_dict)}: ')
             # Create a list of category names without the /*numberstring following the name.
             selected_category_names = [category.split('/')[4] for category in selected_category.values()]
             print(f"Categories selected: {selected_category_names}")
-
-            return selected_category_names, selected_category
+            return selected_category_names, selected_category 
+                                                         
 
         except KeyboardInterrupt:
             raise KeyboardInterrupt
@@ -337,6 +341,7 @@ list. Values between 1 and {len(category_link_dict)}: ')
                         print('Data will not be saved in an RDS...')
         except KeyboardInterrupt:
             raise KeyboardInterrupt
+        return True
 
     def _interior_cloud_save_loop(self, remote: str, selected_category_names: list) -> Union[None, str]:
 
@@ -658,7 +663,7 @@ your data/images to a remote bucket? Y or N: ').upper()
             raise KeyboardInterrupt
 
     def _generate_unique_id(self) -> None:
-
+        start = time.time()
         ''' Defines a function which generates a unique ID (uuid4) for every image page
         that is scraped by the scraper. 
 
@@ -989,7 +994,6 @@ your data/images to a remote bucket? Y or N: ').upper()
         except KeyboardInterrupt:
             raise KeyboardInterrupt
 
-    def _grab_all_users_and_counts(self) -> None:
 
         ''' Defines a function that checks if a user is officially recognised or a story. Then runs the appropriate 
         methods to grab the data based on what type of page layout is present on the page. 
@@ -1355,7 +1359,8 @@ your data/images to a remote bucket? Y or N: ').upper()
             engine = create_engine(f"{DATABASE_TYPE}+{DBAPI}://{USER}:{PASSWORD}@{HOST}:{PORT}/{DATABASE}")
         # Connect to the RDS
         engine.connect()
-
+        end = time.time()
+        print (f"It had taken {end - start} seconds to run the '_connect_to_RDS' method")   
         return engine
 
     def _process_df(self, df) -> DataFrame:
@@ -1378,6 +1383,8 @@ your data/images to a remote bucket? Y or N: ').upper()
         file_name_col = df.pop('name')
         df.insert(0, 'name', file_name_col)
         print(df.head(3))
+        end = time.time()
+        print (f"It had taken {end - start} seconds to run the '_process_df' method")   
         return df
 
     def _json_to_rds(self, data_path:str, remote: bool) -> None:
@@ -1412,6 +1419,22 @@ your data/images to a remote bucket? Y or N: ').upper()
                 # Load local JSON file as a dataframe.
                 df = pd.read_json(json_path)
                 df = self._process_df(df)
+                # df['name'] = df.index
+                # # df['id'] = list(range(len(df)))
+                # df = df.set_index('uuid4')
+                # file_name_col = df.pop('name')
+                # df.insert(0, 'name', file_name_col)
+                # print(df.head(3))
+            # valid = False
+
+            # while not valid:
+            #     try:
+            #         save_to_rds = input('Do you wish to save the JSON data to AWS RDS? [Y/n]: ').lower()
+            #         assert save_to_rds == 'y' or save_to_rds == 'n'
+            #         valid = True
+            #     except Exception:
+            #         print('Invalid input')
+                
                 df.to_sql(f'pinterest_{key}', engine, if_exists='replace')
             # For remote JSON files.
             elif type(val) == list: 
@@ -1420,11 +1443,15 @@ your data/images to a remote bucket? Y or N: ').upper()
                     Bucket = val[1],
                     Key = (f'pinterest/{key}/{key}.json')
                 )
+                # print(type(json_obj), type(json_obj['Body'].read()))
+                # print(type(json.loads(json_obj['Body'].read())))
                 save_dict = json.loads(json_obj['Body'].read())
                 # Load as a dataframe.
                 df = pd.DataFrame.from_dict(save_dict)
                 df = self._process_df(df)
                 df.to_sql(f'pinterest_{key}', engine, if_exists='replace')
+        end = time.time()
+        print (f"It had taken {end - start} seconds to run the '_jason_to_rds' method")   
 
     def get_category_data(self) -> None:
 
@@ -1500,3 +1527,4 @@ if __name__ == "__main__":
     pinterest_scraper.get_category_data()
     # Create RDS from collected data.
     pinterest_scraper.create_RDS()
+   

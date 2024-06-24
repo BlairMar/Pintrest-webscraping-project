@@ -25,7 +25,7 @@ from selenium.webdriver.chrome.options import Options
 
 class PinterestScraper:
 
-    def __init__(self, root: str) -> None:
+    def __init__(self, root: str, category = None) -> None:
         
         ''' Initialise the attributes of the class
 
@@ -53,7 +53,7 @@ class PinterestScraper:
             None '''
             
         
-        self._category = None # Holds the value whatever category we are currently on.
+        self.category = None # Holds the value whatever category we are currently on.
         self._root = root # The root URL.
         chrome_options = Options()
         chrome_options.add_argument('--ignore-certificate-errors')
